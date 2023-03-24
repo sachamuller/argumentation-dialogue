@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from typing import Dict
+from communication.preferences.CriterionName import CriterionName
 
 
 class Item:
@@ -10,11 +12,12 @@ class Item:
         description: the description of the item
      """
 
-    def __init__(self, name, description):
+    def __init__(self, name, description, criterion_values:Dict[CriterionName, float]):
         """Creates a new Item.
         """
         self.__name = name
         self.__description = description
+        self.__criterion_values = criterion_values
 
     def __str__(self):
         """Returns Item as a String.
@@ -45,3 +48,9 @@ class Item:
             sum_result = sum_result + criterion_weight * self.get_value(preferences, criterion_name).value
             criterion_weight = criterion_weight / 2
         return sum_result
+
+    def get_criterion_values(self):
+        return self.__criterion_values
+    
+    def get_criterion_value(self, criterion_name):
+        return self.__criterion_values[criterion_name]

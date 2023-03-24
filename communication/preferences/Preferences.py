@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
+import random
+
 from communication.preferences.CriterionName import CriterionName
 from communication.preferences.CriterionValue import CriterionValue
 from communication.preferences.Item import Item
 from communication.preferences.Value import Value
-
-import random
 
 
 class Preferences:
@@ -86,6 +86,42 @@ class Preferences:
         item_list.sort(key=lambda x: x.get_score(self), reverse=True)
         item_rank = item_list.index(item)
         return item_rank / len(item_list) < 0.1
+
+    def __str__(self) -> str:
+        result = f'Criterion order : {" > ".join([str(name) for name in self.get_criterion_name_list()])}\nCriterion values :\n'
+        criterion_names = [str(name) for name in CriterionName]
+        items = list(
+            set(
+                [
+                    criterion_value.get_item()
+                    for criterion_value in self.get_criterion_value_list()
+                ]
+            )
+        )
+        first_column_width = max([len(str(item)) for item in items])
+        header = " " * first_column_width + "|" + "|".join(criterion_names)
+        result += header + "\n"
+        stars_columns_width = [max(len(name), 4) for name in criterion_names]
+        rows = [str(item) for item in items]
+        star_correspondance = {
+            Value.VERY_BAD: "*",
+            Value.BAD: "**",
+            Value.GOOD: "***",
+            Value.VERY_GOOD: "****",
+        }
+        for item in items:
+            row = str(item) + " " * max(first_column_width - len(str(item)), 0)
+            for i, criterion in enumerate(CriterionName):
+                row += "|"
+                value = self.get_value(item, criterion)
+                if value is not None:
+                    row += star_correspondance[value] + " " * max(
+                        stars_columns_width[i] - len(star_correspondance[value]), 0
+                    )
+                else :
+                    row += " " * stars_columns_width[i]
+            result += row + "\n"
+        return result
 
 
 if __name__ == "__main__":
@@ -171,11 +207,15 @@ if __name__ == "__main__":
     )
     print(
         "Diesel Engine in top 10% prefered : {}".format(
-            agent_pref.is_item_among_top_10_percent(diesel_engine, [diesel_engine, electric_engine])
+            agent_pref.is_item_among_top_10_percent(
+                diesel_engine, [diesel_engine, electric_engine]
+            )
         )
     )
     print(
         "Electric Engine in top 10% prefered : {}".format(
-            agent_pref.is_item_among_top_10_percent(electric_engine, [diesel_engine, electric_engine])
+            agent_pref.is_item_among_top_10_percent(
+                electric_engine, [diesel_engine, electric_engine]
+            )
         )
     )
