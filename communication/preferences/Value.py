@@ -7,6 +7,7 @@ class Value(Enum):
     """Value enum class.
     Enumeration containing the possible Value.
     """
+
     VERY_BAD = 0
     BAD = 1
     AVERAGE = 2

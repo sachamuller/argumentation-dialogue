@@ -118,7 +118,7 @@ class Preferences:
                     row += star_correspondance[value] + " " * max(
                         stars_columns_width[i] - len(star_correspondance[value]), 0
                     )
-                else :
+                else:
                     row += " " * stars_columns_width[i]
             result += row + "\n"
         return result
@@ -137,7 +137,7 @@ if __name__ == "__main__":
         ]
     )
 
-    diesel_engine = Item("Diesel Engine", "A super cool diesel engine")
+    diesel_engine = Item("Diesel Engine", "A super cool diesel engine", None)
     agent_pref.add_criterion_value(
         CriterionValue(diesel_engine, CriterionName.PRODUCTION_COST, Value.VERY_GOOD)
     )
@@ -154,7 +154,7 @@ if __name__ == "__main__":
         CriterionValue(diesel_engine, CriterionName.NOISE, Value.BAD)
     )
 
-    electric_engine = Item("Electric Engine", "A very quiet engine")
+    electric_engine = Item("Electric Engine", "A very quiet engine", None)
     agent_pref.add_criterion_value(
         CriterionValue(electric_engine, CriterionName.PRODUCTION_COST, Value.BAD)
     )

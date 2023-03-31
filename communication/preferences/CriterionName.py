@@ -11,7 +11,7 @@ class CriterionName(Enum):
     PRODUCTION_COST = 0, (8000, 20000)  # in euros
     CONSUMPTION = 1, (0, 10)  # in L/100km
     DURABILITY = 2, (1, 4)  # qualitative scale
-    ENVIRONMENT_IMPACT = 3, (1, 4) # qualitative scale
+    ENVIRONMENT_IMPACT = 3, (1, 4)  # qualitative scale
     NOISE = 4, (30, 85)  # in dB
 
     def __new__(cls, *args, **kwds):
