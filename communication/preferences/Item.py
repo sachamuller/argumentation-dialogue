@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from typing import Dict
+
 from communication.preferences.CriterionName import CriterionName
 
 
@@ -20,7 +21,7 @@ class Item:
 
     def __str__(self):
         """Returns Item as a String."""
-        return self.__name + " (" + self.__description + ")"
+        return self.__name
 
     def get_name(self):
         """Returns the name of the item."""

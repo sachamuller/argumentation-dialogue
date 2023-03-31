@@ -18,27 +18,38 @@ class Preferences:
     """
 
     def __init__(self):
-        """Creates a new Preferences object."""
+        """Creates a new Preferences object.
+        self.__criterion_name_list = preference between the criterions (i.e ecology > price > ... )
+        self.__criterion_value_list = list of triplets (item, criterion, good/bad value)
+        """
         self.__criterion_name_list = []
         self.__criterion_value_list = []
 
-    def get_criterion_name_list(self):
+    def get_criterion_name_list(self) -> list[CriterionName]:
         """Returns the list of criterion name."""
         return self.__criterion_name_list
 
-    def get_criterion_value_list(self):
+    def get_criterion_value_list(self) -> list[CriterionValue]:
         """Returns the list of criterion value."""
         return self.__criterion_value_list
 
-    def set_criterion_name_list(self, criterion_name_list):
+    def get_sorted_criterion_value_list(self, reverse=False) -> list[CriterionValue]:
+        """Returns the sorted list of criterion value, from most to least important."""
+        return sorted(
+            self.__criterion_value_list,
+            key=lambda x: self.__criterion_name_list.index(x.get_criterion_name()),
+            reverse=reverse,
+        )
+
+    def set_criterion_name_list(self, criterion_name_list: list[CriterionName]):
         """Sets the list of criterion name."""
         self.__criterion_name_list = criterion_name_list
 
-    def add_criterion_value(self, criterion_value):
+    def add_criterion_value(self, criterion_value: list[CriterionValue]):
         """Adds a criterion value in the list."""
         self.__criterion_value_list.append(criterion_value)
 
-    def get_value(self, item, criterion_name):
+    def get_value(self, item: Item, criterion_name: CriterionName):
         """Gets the value for a given item and a given criterion name."""
         for value in self.__criterion_value_list:
             if (

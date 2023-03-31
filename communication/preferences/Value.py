@@ -13,3 +13,6 @@ class Value(Enum):
     AVERAGE = 2
     GOOD = 3
     VERY_GOOD = 4
+
+    def __str__(self):
+        return self.name

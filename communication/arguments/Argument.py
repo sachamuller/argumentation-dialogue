@@ -1,5 +1,5 @@
-from arguments.Comparison import Comparison
-from arguments.CoupleValue import CoupleValue
+from communication.arguments.Comparison import Comparison
+from communication.arguments.CoupleValue import CoupleValue
 
 
 class Argument:
@@ -23,5 +23,14 @@ class Argument:
     def add_premiss_comparison(self, better_criterion, worse_criterion):
         self.comparison_list.append(Comparison(better_criterion, worse_criterion))
 
-    def add_premiss_couple_values(self, criterion_name, value):
-        self.couple_values_list.append(CoupleValue(criterion_name, value))
+    def add_premiss_couple_value(self, couple_value: CoupleValue):
+        self.couple_values_list.append(couple_value)
+
+    def __str__(self):
+        return (
+            f"Argument({'not' if not self.boolean_decision else ''}"
+            f"{'' if not self.comparison_list else ', '}"
+            f"{self.item}{','.join(str(x) for x in self.comparison_list)}"
+            f"{'' if not self.couple_values_list else ', '}"
+            f"{','.join(str(x) for x in self.couple_values_list)})"
+        )

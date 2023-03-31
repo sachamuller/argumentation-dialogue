@@ -8,11 +8,11 @@ class CriterionName(Enum):
     Enumeration containing the possible CriterionName.
     """
 
-    PRODUCTION_COST = 0, (8000, 20000)  # in euros
-    CONSUMPTION = 1, (0, 10)  # in L/100km
-    DURABILITY = 2, (1, 4)  # qualitative scale
-    ENVIRONMENT_IMPACT = 3, (1, 4)  # qualitative scale
-    NOISE = 4, (30, 85)  # in dB
+    PRODUCTION_COST = 0, True, (8000, 20000)  # in euros
+    CONSUMPTION = 1, True, (0, 10)  # in L/100km
+    DURABILITY = 2, False, (1, 4)  # qualitative scale
+    ENVIRONMENT_IMPACT = 3, True, (1, 4)  # qualitative scale
+    NOISE = 4, False, (30, 85)  # in dB
 
     def __new__(cls, *args, **kwds):
         obj = object.__new__(cls)
@@ -20,13 +20,21 @@ class CriterionName(Enum):
         return obj
 
     # ignore the first param since it's already set by __new__
-    def __init__(self, _: str, criterion_range: int = None):
+    def __init__(
+        self, _: str, lower_is_better: bool = True, criterion_range: int = None
+    ):
         self.__criterion_range = criterion_range
+        self.__lower_is_better = lower_is_better
 
     def __str__(self):
         return str(self.name)
 
-    # this is supposed to make sure that the label_id is read-only
+    # this is supposed to make sure that the criterion_range is read-only
     @property
     def criterion_range(self):
         return self.__criterion_range
+
+    # same for lower_is_better
+    @property
+    def lower_is_better(self):
+        return self.__lower_is_better
