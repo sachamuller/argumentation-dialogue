@@ -16,6 +16,8 @@ class MessagePerformative(Enum):
     QUERY_REF = 106
     INFORM_REF = 107
     ARGUMENT_FAILED = 108
+    ADMIT_DEFEAT = 109
+    REJECT = 110
 
     def __str__(self):
         """Returns the name of the enum item."""

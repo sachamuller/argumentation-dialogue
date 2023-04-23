@@ -2,12 +2,11 @@ import random
 from typing import Iterable
 
 from mesa import Model
-from mesa.time import BaseScheduler, RandomActivation
+from mesa.time import BaseScheduler
 
 from communication.agent.CommunicatingAgent import CommunicatingAgent
 from communication.arguments.Argument import Argument
 from communication.arguments.CoupleValue import CoupleValue
-from communication.message.Message import Message
 from communication.message.MessagePerformative import MessagePerformative
 from communication.message.MessageService import MessageService
 from communication.preferences.CriterionName import CriterionName
@@ -15,6 +14,19 @@ from communication.preferences.CriterionValue import CriterionValue
 from communication.preferences.Item import Item
 from communication.preferences.Preferences import Preferences
 from communication.preferences.Value import Value
+from enum import Enum
+
+
+class Status(Enum):
+    PROPOSED = 0  # transitory status
+    ACCEPTABLE_MINIMUM = (
+        1  # I won an argument arguing for it --> won't go below this item
+    )
+    IMPOSSIBLE = 2  # Rejected
+    ARGUMENT_ENDED_WITH_DEFEAT = 3  # I lost an argument arguing against it
+
+    # Si X convainc Y que non E : item devient IMPOSSIBLE pour les deux
+    # Si X convainc Y que oui E : item devient ACCEPTABLE_MINIMUM pour X et ARGUMENT_ENDED_WITH_DEFEAT pour Y
 
 
 class ArgumentAgent(CommunicatingAgent):
@@ -27,21 +39,19 @@ class ArgumentAgent(CommunicatingAgent):
         name,
         preferences: Preferences,
         initiate_proposal=False,
-        propose_cooldown_reset_value=3,
+        rejection_threshold: int = 80,
     ):
         super().__init__(unique_id, model, name)
         self.preferences = preferences
-        self.items = [
-            criterion.get_item()
+        self.items: dict[Item, Status | None] = {
+            criterion.get_item(): None
             for criterion in self.preferences.get_criterion_value_list()
-        ]
+        }
         self.initiate_proposal = initiate_proposal
         self.available_arguments = {}
         self.used_counter_arguments = []
         self.is_done = False
-        self.proposed: list[Item] = []
-        self.propose_cooldown = 0
-        self.propose_cooldown_reset_value = propose_cooldown_reset_value
+        self.rejection_threshold = rejection_threshold
 
     def accept(self, item: Item, agent_id: int):
         self.simple_send_message(
@@ -51,7 +61,7 @@ class ArgumentAgent(CommunicatingAgent):
         )
 
     def propose(self, item: Item, agent_id: int):
-        self.proposed.append(item)
+        self.items[item] = Status.PROPOSED
         self.simple_send_message(
             agent_id,
             MessagePerformative.PROPOSE,
@@ -66,6 +76,7 @@ class ArgumentAgent(CommunicatingAgent):
         )
 
     def commit(self, item: Item, agent_id: int):
+        self.is_done = True
         self.simple_send_message(
             agent_id,
             MessagePerformative.COMMIT,
@@ -80,6 +91,28 @@ class ArgumentAgent(CommunicatingAgent):
             argument,
         )
 
+    def reject(self, item, agent_id: int):
+        self.items[item] = Status.IMPOSSIBLE
+        self.simple_send_message(
+            agent_id,
+            MessagePerformative.REJECT,
+            item,
+        )
+
+    def admit_defeat(self, argument: Argument, agent_id: int):
+        if argument.boolean_decision:
+            # the other argued for an item
+            self.items[argument.item] = Status.ARGUMENT_ENDED_WITH_DEFEAT
+        else:
+            # the other argued agains an item
+            self.items[argument.item] = Status.IMPOSSIBLE
+
+        self.simple_send_message(
+            agent_id,
+            MessagePerformative.ADMIT_DEFEAT,
+            argument,
+        )
+
     def step(self):
         super().step()
         if self.is_done:
@@ -87,23 +120,76 @@ class ArgumentAgent(CommunicatingAgent):
         messages = self.get_new_messages()
         for message in messages:
             if message.get_performative() == MessagePerformative.PROPOSE:
-                if self.preferences.is_item_among_top_10_percent(
-                    message.get_content(), self.items
+                # Find best non-impossible items over the minimal acceptable item
+                acceptable_minimums = [
+                    item
+                    for (item, status) in self.items.items()
+                    if status == Status.ACCEPTABLE_MINIMUM
+                ]
+                if len(acceptable_minimums) > 0:
+                    most_preferred_acceptable_minimum = self.preferences.most_preferred(
+                        acceptable_minimums
+                    )
+                    acceptable_items = [
+                        item
+                        for (item, status) in self.items.items()
+                        if status != Status.IMPOSSIBLE
+                        and self.preferences.is_preferred_item(
+                            item, most_preferred_acceptable_minimum
+                        )
+                    ]
+                else:
+                    acceptable_items = [
+                        item
+                        for (item, status) in self.items.items()
+                        if status != Status.IMPOSSIBLE
+                    ]
+                if len(acceptable_items) == 0:
+                    # Il ne pourra jamais accepter l'item, mais il espère
+                    # déconstruire les arguments de l'autre pour qu'il accepte enfin
+                    # sa proposition préférée
+                    self.ask_why(message.get_content(), message.get_exp())
+                    continue
+
+                if self.items[message.get_content()] is not None:
+                    continue
+                self.items[
+                    message.get_content()
+                ] = Status.PROPOSED  # Do not propose again
+
+                if not self.preferences.is_item_among_top_n_percent(  # Si pas dans le top 10%, on le rejette
+                    message.get_content(), list(self.items), n=self.rejection_threshold
+                ):
+                    self.reject(message.get_content(), message.get_exp())
+                elif (  # Meilleur item non rejeté/contre-argumenté -> on accepte
+                    self.preferences.most_preferred(acceptable_items)
+                    == message.get_content()
                 ):
                     self.accept(message.get_content(), message.get_exp())
-                else:
+                else:  # Sinon --> Ask why (commence une argumentation)
                     self.ask_why(message.get_content(), message.get_exp())
+
             elif message.get_performative() in (
                 MessagePerformative.ACCEPT,
                 MessagePerformative.COMMIT,
             ):
                 if message.get_content() in self.items:
                     self.commit(message.get_content(), message.get_exp())
-                    self.is_done = True
+
             elif message.get_performative() == MessagePerformative.ASK_WHY:
                 item = message.get_content()
                 argument = self.support_proposal(item, boolean_decision=True)
                 self.argue(argument, message.get_exp())
+
+            elif message.get_performative() == MessagePerformative.REJECT:
+                self.items[message.get_content()] = Status.IMPOSSIBLE
+
+            elif message.get_performative() == MessagePerformative.ADMIT_DEFEAT:
+                argument = message.get_content()
+                if argument.boolean_decision:
+                    self.items[argument.item] = Status.ACCEPTABLE_MINIMUM
+                else:
+                    self.items[argument.item] = Status.IMPOSSIBLE
 
             elif message.get_performative() == MessagePerformative.ARGUE:
                 argument: Argument = message.get_content()
@@ -111,34 +197,54 @@ class ArgumentAgent(CommunicatingAgent):
                     self.argue(counter_argument, message.get_exp())
                 elif (
                     counter_argument := self.support_proposal(argument.item, False)
-                    is not None
-                ):
+                ) is not None:
                     self.argue(counter_argument, message.get_exp())
                 else:
-                    self.accept(argument.item, message.get_exp())
+                    self.admit_defeat(argument, message.get_exp())
 
-        # TODO: should be able to manage multiple proposals in parallel at a time
+        # Make a new proposal
         if (
             len(messages) == 0
-            and self.initiate_proposal  # Agent qui peut faire des propositions
             and self.model.schedule.get_agent_count() > 0  # Au moins 2 agents
-            and len(self.items) > 0  # Au moins 1 item disponible
-            and self.propose_cooldown == 0
         ):
-            other_agent = random.choice(
-                [agent for agent in self.model.schedule.agent_buffer() if agent != self]
-            )
-            if len(self.items) != len(self.proposed):
-                chosen_item = self.preferences.most_preferred(
-                    [item for item in self.items if item not in self.proposed]
+            acceptable_minimums = [
+                item
+                for (item, status) in self.items.items()
+                if status == Status.ACCEPTABLE_MINIMUM
+            ]
+            if len(acceptable_minimums) > 0:
+                most_preferred_acceptable_minimum = self.preferences.most_preferred(
+                    acceptable_minimums
                 )
-                self.propose(chosen_item, other_agent.unique_id)
-            self.propose_cooldown = self.propose_cooldown_reset_value + 1
-        if self.propose_cooldown > 0:
-            self.propose_cooldown -= 1
+                acceptable_proposals = [
+                    item
+                    for (item, status) in self.items.items()
+                    if status in (None, Status.ARGUMENT_ENDED_WITH_DEFEAT)
+                    and self.preferences.is_preferred_item(
+                        item, most_preferred_acceptable_minimum
+                    )
+                ]
+            else:
+                acceptable_proposals = [
+                    item
+                    for (item, status) in self.items.items()
+                    if status in (None, Status.ARGUMENT_ENDED_WITH_DEFEAT)
+                ]
+            other_agent = [
+                agent for agent in self.model.schedule.agent_buffer() if agent != self
+            ][0]
+            if acceptable_proposals:  # Au moins 1 item disponible
+                chosen_item = self.preferences.most_preferred(acceptable_proposals)
+                if self.items[chosen_item] == Status.ARGUMENT_ENDED_WITH_DEFEAT:
+                    # Si la meilleure proposition est un argument perdu, accepter car l'autre agent ne descendra pas plus bas
+                    self.accept(chosen_item, other_agent.unique_id)
+                else:
+                    self.propose(chosen_item, other_agent.unique_id)
+            else:  # Plus d'item disponible, impossible de trouver un accord
+                self.commit(None, other_agent.unique_id)
 
     def generate_preferences(self, list_items: list[Item]):
-        self.items = list_items.copy()
+        self.items = {item: None for item in list_items}
         # shuffle the criterions to get the order of preferences
         list_criterions = [criterion_name for criterion_name in CriterionName]
         random.shuffle(list_criterions)
@@ -245,7 +351,7 @@ class ArgumentAgent(CommunicatingAgent):
             # Counter argument on the value of an criterion
             own_value = self.preferences.get_value(item, couple_value.criterion_name)
             received_value_less_than_own_value: bool = (
-                couple_value.value.value < own_value.value
+                couple_value.value.value <= own_value.value
             )
             if (
                 received_value_less_than_own_value and not argument.boolean_decision
@@ -287,31 +393,8 @@ class ArgumentModel(Model):
         self.__messages_service = MessageService(self.schedule)
         A1 = ArgumentAgent(1, self, "A1", Preferences(), True)
         A2 = ArgumentAgent(2, self, "A2", Preferences())
-        # A1.generate_preferences(list_items)
-        # A2.generate_preferences(list_items)
-        criterion_value_A1_1 = CriterionValue(
-            list_items[0], CriterionName.NOISE, Value.VERY_GOOD
-        )
-        criterion_value_A1_2 = CriterionValue(
-            list_items[1], CriterionName.NOISE, Value.BAD
-        )
-        A1.preferences = Preferences()
-        A1.preferences.add_criterion_value(criterion_value_A1_1)
-        A1.preferences.add_criterion_value(criterion_value_A1_2)
-        A1.preferences.set_criterion_name_list([CriterionName.NOISE])
-        A1.items = list_items.copy()
-
-        criterion_value_A2_1 = CriterionValue(
-            list_items[0], CriterionName.NOISE, Value.BAD
-        )
-        criterion_value_A2_2 = CriterionValue(
-            list_items[1], CriterionName.NOISE, Value.VERY_GOOD
-        )
-        A2.preferences = Preferences()
-        A2.preferences.add_criterion_value(criterion_value_A2_1)
-        A2.preferences.add_criterion_value(criterion_value_A2_2)
-        A2.preferences.set_criterion_name_list([CriterionName.NOISE])
-        A2.items = list_items.copy()
+        A1.generate_preferences(list_items)
+        A2.generate_preferences(list_items)
 
         self.schedule.add(A1)
         self.schedule.add(A2)
@@ -329,22 +412,44 @@ if __name__ == "__main__":
             "Diesel Engine",
             "A super cool diesel engine",
             {
-                # CriterionName.PRODUCTION_COST: 12330,
-                # CriterionName.CONSUMPTION: 6.3,
-                # CriterionName.DURABILITY: 3.8,
-                # CriterionName.ENVIRONMENT_IMPACT: 4.8,
-                CriterionName.NOISE: 50,
+                CriterionName.PRODUCTION_COST: 12330,
+                CriterionName.CONSUMPTION: 6.3,
+                CriterionName.DURABILITY: 3.8,
+                CriterionName.ENVIRONMENT_IMPACT: 4.8,
+                CriterionName.NOISE: 60,
             },
         ),
         Item(
             "Electric Engine",
             "A very quiet engine",
             {
-                # CriterionName.PRODUCTION_COST: 17100,
-                # CriterionName.CONSUMPTION: 0,
-                # CriterionName.DURABILITY: 3,
-                # CriterionName.ENVIRONMENT_IMPACT: 2.2,
-                CriterionName.NOISE: 5,
+                CriterionName.PRODUCTION_COST: 17100,
+                CriterionName.CONSUMPTION: 0,
+                CriterionName.DURABILITY: 3,
+                CriterionName.ENVIRONMENT_IMPACT: 2.2,
+                CriterionName.NOISE: 40,
+            },
+        ),
+        Item(
+            "Turbo Car",
+            "So fast you can't even see it",
+            {
+                CriterionName.PRODUCTION_COST: 19784,
+                CriterionName.CONSUMPTION: 8,
+                CriterionName.DURABILITY: 2.5,
+                CriterionName.ENVIRONMENT_IMPACT: 3,
+                CriterionName.NOISE: 75,
+            },
+        ),
+        Item(
+            "Really Huge Truck",
+            "Lifts your whole family like a charm",
+            {
+                CriterionName.PRODUCTION_COST: 15000,
+                CriterionName.CONSUMPTION: 9.2,
+                CriterionName.DURABILITY: 3.7,
+                CriterionName.ENVIRONMENT_IMPACT: 3.7,
+                CriterionName.NOISE: 80,
             },
         ),
     ]
@@ -352,5 +457,5 @@ if __name__ == "__main__":
     argument_model = ArgumentModel(list_items)
     print(argument_model.schedule.agents[0].preferences)
     print(argument_model.schedule.agents[1].preferences)
-    for _ in range(4):
+    for _ in range(100):
         argument_model.step()

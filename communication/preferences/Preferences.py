@@ -82,21 +82,21 @@ class Preferences:
             if self.is_preferred_or_equal_item(item, best_item):
                 if self.is_preferred_or_equal_item(best_item, item):
                     # both items are equally prefered
-                    best_item = random.choice(best_item, item)
+                    best_item = random.choice([best_item, item])
                 else:
                     best_item = item
         return best_item
 
-    def is_item_among_top_10_percent(self, item, item_list):
+    def is_item_among_top_n_percent(self, item, item_list, n=50):
         """
-        Return whether a given item is among the top 10 percent of the preferred items.
+        Return whether a given item is among the top n percent of the preferred items.
 
         :return: a boolean, True means that the item is among the favourite ones
         """
         # sort item list in descending order (preferred item will be [0])
         item_list.sort(key=lambda x: x.get_score(self), reverse=True)
         item_rank = item_list.index(item)
-        return item_rank / len(item_list) < 0.1
+        return (item_rank) / len(item_list) < n / 100
 
     def __str__(self) -> str:
         result = f'Criterion order : {" > ".join([str(name) for name in self.get_criterion_name_list()])}\nCriterion values :\n'
@@ -131,6 +131,7 @@ class Preferences:
                     )
                 else:
                     row += " " * stars_columns_width[i]
+            row += " | " + str(item.get_score(self))
             result += row + "\n"
         return result
 
