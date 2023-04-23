@@ -49,7 +49,7 @@ class Preferences:
         """Adds a criterion value in the list."""
         self.__criterion_value_list.append(criterion_value)
 
-    def get_value(self, item: Item, criterion_name: CriterionName):
+    def get_value(self, item: Item, criterion_name: CriterionName) -> Value | None:
         """Gets the value for a given item and a given criterion name."""
         for value in self.__criterion_value_list:
             if (
