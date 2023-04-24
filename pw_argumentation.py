@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Iterable
 
 from mesa import Model
-from mesa.time import BaseScheduler
+from mesa.time import BaseScheduler, RandomActivation
 
 from communication.agent.CommunicatingAgent import CommunicatingAgent
 from communication.arguments.Argument import Argument
@@ -39,7 +39,6 @@ class ArgumentAgent(CommunicatingAgent):
         model,
         name,
         preferences: Preferences,
-        initiate_proposal=False,
         rejection_threshold: int = 80,
     ):
         super().__init__(unique_id, model, name)
@@ -48,7 +47,6 @@ class ArgumentAgent(CommunicatingAgent):
             criterion.get_item(): None
             for criterion in self.preferences.get_criterion_value_list()
         }
-        self.initiate_proposal = initiate_proposal
         self.available_arguments = {}
         self.used_counter_arguments = []
         self.is_done = False
@@ -146,11 +144,15 @@ class ArgumentAgent(CommunicatingAgent):
                         if status != Status.IMPOSSIBLE
                     ]
                 if len(acceptable_items) == 0:
-                    # Il ne pourra jamais accepter l'item, mais il espère
-                    # déconstruire les arguments de l'autre pour qu'il accepte enfin
-                    # sa proposition préférée
-                    self.ask_why(message.get_content(), message.get_exp())
-                    continue
+                    if message.get_content() is None:
+                        self.accept(None, message.get_exp())
+                        continue
+                    else:
+                        # Il ne pourra jamais accepter l'item, mais il espère
+                        # déconstruire les arguments de l'autre pour qu'il accepte enfin
+                        # sa proposition préférée
+                        self.ask_why(message.get_content(), message.get_exp())
+                        continue
 
                 if self.items[message.get_content()] is not None:
                     continue
@@ -174,13 +176,17 @@ class ArgumentAgent(CommunicatingAgent):
                 MessagePerformative.ACCEPT,
                 MessagePerformative.COMMIT,
             ):
-                if message.get_content() in self.items:
+                if message.get_content() in self.items or message.get_content() is None:
                     self.commit(message.get_content(), message.get_exp())
 
             elif message.get_performative() == MessagePerformative.ASK_WHY:
                 item = message.get_content()
                 argument = self.support_proposal(item, boolean_decision=True)
-                self.argue(argument, message.get_exp())
+                if argument is not None:
+                    self.argue(argument, message.get_exp())
+                else:
+                    argument = Argument(True, item)
+                    self.admit_defeat(argument, message.get_exp())
 
             elif message.get_performative() == MessagePerformative.REJECT:
                 self.items[message.get_content()] = Status.IMPOSSIBLE
@@ -199,7 +205,6 @@ class ArgumentAgent(CommunicatingAgent):
                 elif (
                     counter_argument := self.support_proposal(argument.item, False)
                 ) is not None:
-                    print("sp")
                     self.argue(counter_argument, message.get_exp())
                 else:
                     self.admit_defeat(argument, message.get_exp())
@@ -243,7 +248,7 @@ class ArgumentAgent(CommunicatingAgent):
                 else:
                     self.propose(chosen_item, other_agent.unique_id)
             else:  # Plus d'item disponible, impossible de trouver un accord
-                self.commit(None, other_agent.unique_id)
+                self.propose(None, other_agent.unique_id)
 
     def generate_preferences(self, list_items: list[Item]):
         self.items = {item: None for item in list_items}
@@ -443,8 +448,9 @@ class ArgumentModel(Model):
 
     def __init__(self, list_items):
         self.schedule = BaseScheduler(self)
+        # self.schedule = RandomActivation(self)
         self.__messages_service = MessageService(self.schedule)
-        A1 = ArgumentAgent(1, self, "A1", Preferences(), True)
+        A1 = ArgumentAgent(1, self, "A1", Preferences())
         A2 = ArgumentAgent(2, self, "A2", Preferences())
         A1.generate_preferences(list_items)
         A2.generate_preferences(list_items)
@@ -457,6 +463,9 @@ class ArgumentModel(Model):
     def step(self):
         self.__messages_service.dispatch_messages()
         self.schedule.step()
+
+    def get_message_service(self):
+        return self.__messages_service
 
 
 if __name__ == "__main__":

@@ -98,6 +98,11 @@ class Preferences:
         item_rank = item_list.index(item)
         return (item_rank) / len(item_list) < n / 100
 
+    def sort_item_list_by_preference(self, item_list):
+        # sort item list in descending order (preferred item will be [0])
+        item_list.sort(key=lambda x: x.get_score(self), reverse=True)
+        return item_list
+
     def __str__(self) -> str:
         result = f'Criterion order : {" > ".join([str(name) for name in self.get_criterion_name_list()])}\nCriterion values :\n'
         criterion_names = [str(name) for name in CriterionName]

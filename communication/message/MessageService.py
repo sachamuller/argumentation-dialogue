@@ -19,6 +19,10 @@ class MessageService:
         """Static access method."""
         return MessageService.__instance
 
+    def reset():
+        """Reset to do stats !!"""
+        MessageService.__instance = None
+
     def __init__(self, scheduler, instant_delivery=True):
         """Create a new MessageService object."""
         if MessageService.__instance is not None:
