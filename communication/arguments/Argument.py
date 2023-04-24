@@ -21,24 +21,25 @@ class Argument:
         self.comparison_list: list[Comparison] = []
         self.couple_values_list: list[CoupleValue] = []
 
-    def add_premiss_comparison(self, better_criterion, worse_criterion):
-        self.comparison_list.append(Comparison(better_criterion, worse_criterion))
+    def add_premiss_comparison(self, comparison: Comparison):
+        self.comparison_list.append(comparison)
 
     def add_premiss_couple_value(self, couple_value: CoupleValue):
         self.couple_values_list.append(couple_value)
 
     def __str__(self):
         return (
-            f"Argument({'not ' if not self.boolean_decision else ''}"
+            f"Argument({'not ' if not self.boolean_decision else ''}{self.item}"
             f"{'' if not self.comparison_list else ', '}"
-            f"{self.item}{','.join(str(x) for x in self.comparison_list)}"
+            f"{','.join(str(x) for x in self.comparison_list)}"
             f"{'' if not self.couple_values_list else ', '}"
             f"{','.join(str(x) for x in self.couple_values_list)})"
         )
 
     def __eq__(self, other) -> bool:
         return (
-            self.boolean_decision == other.boolean_decision
+            isinstance(other, Argument)
+            and self.boolean_decision == other.boolean_decision
             and self.item == other.item
             and self.comparison_list == other.comparison_list
             and self.couple_values_list == other.couple_values_list

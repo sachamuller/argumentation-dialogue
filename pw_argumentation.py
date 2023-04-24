@@ -1,4 +1,5 @@
 import random
+from enum import Enum
 from typing import Iterable
 
 from mesa import Model
@@ -6,6 +7,7 @@ from mesa.time import BaseScheduler
 
 from communication.agent.CommunicatingAgent import CommunicatingAgent
 from communication.arguments.Argument import Argument
+from communication.arguments.Comparison import Comparison
 from communication.arguments.CoupleValue import CoupleValue
 from communication.message.MessagePerformative import MessagePerformative
 from communication.message.MessageService import MessageService
@@ -14,7 +16,6 @@ from communication.preferences.CriterionValue import CriterionValue
 from communication.preferences.Item import Item
 from communication.preferences.Preferences import Preferences
 from communication.preferences.Value import Value
-from enum import Enum
 
 
 class Status(Enum):
@@ -42,7 +43,7 @@ class ArgumentAgent(CommunicatingAgent):
         rejection_threshold: int = 80,
     ):
         super().__init__(unique_id, model, name)
-        self.preferences = preferences
+        self.preferences: Preferences = preferences
         self.items: dict[Item, Status | None] = {
             criterion.get_item(): None
             for criterion in self.preferences.get_criterion_value_list()
@@ -198,6 +199,7 @@ class ArgumentAgent(CommunicatingAgent):
                 elif (
                     counter_argument := self.support_proposal(argument.item, False)
                 ) is not None:
+                    print("sp")
                     self.argue(counter_argument, message.get_exp())
                 else:
                     self.admit_defeat(argument, message.get_exp())
@@ -337,6 +339,42 @@ class ArgumentAgent(CommunicatingAgent):
                     result.append(argument)
         return result
 
+    def attack_criterion_importance(
+        self, item, criterion_name: CriterionName, boolean_decision
+    ) -> tuple[Comparison, CoupleValue] | None:
+        # Counter argument on the importance of an item
+        ordered_criteria = self.preferences.get_criterion_name_list()
+        for own_criterion in ordered_criteria[: ordered_criteria.index(criterion_name)][
+            ::-1
+        ]:
+            if self.preferences.is_preferred_criterion(own_criterion, criterion_name):
+                positive_value = self.preferences.get_value(item, own_criterion) in (
+                    Value.GOOD,
+                    Value.VERY_GOOD,
+                )
+                if ((not positive_value) and boolean_decision) or (
+                    positive_value and not boolean_decision
+                ):
+                    return Comparison(own_criterion, criterion_name), CoupleValue(
+                        own_criterion, self.preferences.get_value(item, own_criterion)
+                    )
+
+    def attack_criterion_value(
+        self, item, couple_value: CoupleValue, boolean_decision: bool
+    ) -> CoupleValue | None:
+        # Counter argument on the value of an item
+        own_value = self.preferences.get_value(item, couple_value.criterion_name)
+        if (
+            couple_value.value.value < own_value.value
+            and not boolean_decision
+            and own_value.value >= Value.GOOD.value
+        ) or (
+            couple_value.value.value > own_value.value
+            and boolean_decision
+            and own_value.value <= Value.BAD.value
+        ):
+            return CoupleValue(couple_value.criterion_name, own_value)
+
     def attack_argument(self, argument: Argument) -> Argument | None:
         """
         Use to find a counter-argument attacking a proposal
@@ -349,21 +387,31 @@ class ArgumentAgent(CommunicatingAgent):
         )
         for couple_value in argument.couple_values_list:
             # Counter argument on the value of an criterion
-            own_value = self.preferences.get_value(item, couple_value.criterion_name)
-            received_value_less_than_own_value: bool = (
-                couple_value.value.value <= own_value.value
-            )
             if (
-                received_value_less_than_own_value and not argument.boolean_decision
-            ) or (not received_value_less_than_own_value and argument.boolean_decision):
-                counter_argument.add_premiss_couple_value(
-                    CoupleValue(couple_value.criterion_name, own_value)
+                own_couple_value := self.attack_criterion_value(
+                    item, couple_value, argument.boolean_decision
                 )
-                if counter_argument not in self.used_counter_arguments:
-                    self.used_counter_arguments.append(counter_argument)
+            ) is not None:
+                if (item, own_couple_value) not in self.used_counter_arguments:
+                    counter_argument.add_premiss_couple_value(own_couple_value)
+                    self.used_counter_arguments.append((item, own_couple_value))
                     return counter_argument
-
             # Counter argument on the importance of an item
+            if (
+                res := self.attack_criterion_importance(
+                    item, couple_value.criterion_name, argument.boolean_decision
+                )
+            ) is not None:
+                comparison, own_couple_value = res
+                if (item, comparison) not in self.used_counter_arguments and (
+                    item,
+                    own_couple_value,
+                ) not in self.used_counter_arguments:
+                    self.used_counter_arguments.append((item, comparison))
+                    self.used_counter_arguments.append((item, own_couple_value))
+                    counter_argument.add_premiss_comparison(comparison)
+                    counter_argument.add_premiss_couple_value(own_couple_value)
+                    return counter_argument
 
     def support_proposal(self, item: Item, boolean_decision: bool) -> Argument | None:
         """
@@ -376,12 +424,17 @@ class ArgumentAgent(CommunicatingAgent):
                 self.available_arguments[item] = self.list_supporting_proposal(item)
             else:
                 self.available_arguments[item] = self.list_attacking_proposal(item)
-        while len(self.available_arguments[item]) > 0 and (
-            (argument := self.available_arguments[item].pop(0))
-            not in self.used_counter_arguments
-        ):
-            self.used_counter_arguments.append(argument)
-            return argument
+        while len(self.available_arguments[item]) > 0:
+            argument: Argument = self.available_arguments[item].pop(0)
+            if (
+                argument.item,
+                argument.couple_values_list[0],
+            ) not in self.used_counter_arguments:
+                self.used_counter_arguments.append(argument)
+                self.used_counter_arguments.extend(
+                    (item, couple_value) for couple_value in argument.couple_values_list
+                )
+                return argument
         return None
 
 
@@ -409,7 +462,7 @@ class ArgumentModel(Model):
 if __name__ == "__main__":
     list_items = [
         Item(
-            "Diesel Engine",
+            "A",
             "A super cool diesel engine",
             {
                 CriterionName.PRODUCTION_COST: 12330,
@@ -420,7 +473,7 @@ if __name__ == "__main__":
             },
         ),
         Item(
-            "Electric Engine",
+            "B",
             "A very quiet engine",
             {
                 CriterionName.PRODUCTION_COST: 17100,
@@ -431,7 +484,7 @@ if __name__ == "__main__":
             },
         ),
         Item(
-            "Turbo Car",
+            "C",
             "So fast you can't even see it",
             {
                 CriterionName.PRODUCTION_COST: 19784,
@@ -442,7 +495,7 @@ if __name__ == "__main__":
             },
         ),
         Item(
-            "Really Huge Truck",
+            "D",
             "Lifts your whole family like a charm",
             {
                 CriterionName.PRODUCTION_COST: 15000,

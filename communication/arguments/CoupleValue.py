@@ -11,4 +11,8 @@ class CoupleValue:
         return f"{self.criterion_name} = {self.value}"
 
     def __eq__(self, other) -> bool:
-        return self.criterion_name == other.criterion_name and self.value == other.value
+        return (
+            isinstance(other, CoupleValue)
+            and self.criterion_name == other.criterion_name
+            and self.value == other.value
+        )
