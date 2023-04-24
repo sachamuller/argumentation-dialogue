@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Iterable
 
 from mesa import Model
-from mesa.time import BaseScheduler
+from mesa.time import BaseScheduler, RandomActivation
 
 from communication.agent.CommunicatingAgent import CommunicatingAgent
 from communication.arguments.Argument import Argument
@@ -442,7 +442,7 @@ class ArgumentModel(Model):
     """ArgumentModel which inherit from Model."""
 
     def __init__(self, list_items):
-        self.schedule = BaseScheduler(self)
+        self.schedule = RandomActivation(self)
         self.__messages_service = MessageService(self.schedule)
         A1 = ArgumentAgent(1, self, "A1", Preferences(), True)
         A2 = ArgumentAgent(2, self, "A2", Preferences())
